@@ -5,17 +5,24 @@ export async function POST(request: Request) {
     const { password } = await request.json();
     const correctPassword = process.env.ADMIN_PASSWORD;
 
+    if (!correctPassword) {
+      return NextResponse.json(
+        { error: 'Admin wachtwoord is niet ingesteld op de server.' },
+        { status: 500 }
+      );
+    }
+
     if (password === correctPassword) {
       return NextResponse.json({ success: true });
     } else {
       return NextResponse.json(
-        { success: false, message: 'Onjuist wachtwoord' },
+        { error: 'Onjuist wachtwoord.' },
         { status: 401 }
       );
     }
   } catch (error) {
     return NextResponse.json(
-      { success: false, message: 'Serverfout' },
+      { error: 'Er is een fout opgetreden.' },
       { status: 500 }
     );
   }
