@@ -47,18 +47,18 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: orderError.message }, { status: 500 });
     }
 
-    // 3. Maak de betaling aan bij Mollie
-// In app/api/checkout/route.ts binnen mollieClient.payments.create:
+  // 3. Maak de betaling aan bij Mollie
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://maaktje.vercel.app';
+
 const payment = await mollieClient.payments.create({
   amount: {
     currency: 'EUR',
-    value: formattedAmount,
+    value: formattedAmount, // Let op: moet een string zijn met 2 decimalen, bijv. "12.50"
   },
-  description: `Bestelling #${order.id} bij Mijn Webshop`,
-  redirectUrl: `http://localhost:3000/succes?order_id=${order.id}`,
-  cancelUrl: `http://localhost:3000`,
-  // Voeg de webhook URL toe (werkt zodra de site live staat op internet):
-  webhookUrl: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://jouw-domein.com'}/api/mollie-webhook`,
+  description: `Bestelling #${order.id} bij Maaktje`,
+  redirectUrl: `${siteUrl}/success`,
+  cancelUrl: `${siteUrl}/cart`, // Stuur de klant terug naar de winkelwagen als ze afbreken
+  webhookUrl: `${siteUrl}/api/mollie-webhook`,
   metadata: {
     orderId: order.id,
     customerEmail,
