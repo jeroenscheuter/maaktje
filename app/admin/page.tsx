@@ -1,7 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
+
+interface OrderItem {
+  id?: string;
+  title: string;
+  quantity: number;
+  price: number;
+}
 
 interface Order {
   id: string;
@@ -11,7 +18,7 @@ interface Order {
   customer_address?: string;
   total_price: number;
   status: string;
-  items: any[];
+  items: OrderItem[];
 }
 
 export default function AdminPage() {
@@ -31,7 +38,30 @@ export default function AdminPage() {
 
   // Orders state
   const [orders, setOrders] = useState<Order[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+
+  // Bestellingen ophalen
+  const fetchOrders = useCallback(async () => {
+    setOrdersLoading(true);
+    const { data, error } = await supabase
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Fout bij ophalen bestellingen:', error.message);
+    } else if (data) {
+      setOrders(data as Order[]);
+    }
+    setOrdersLoading(false);
+  }, []);
+
+  // Automatisch bestellingen ophalen zodra ingelogd
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchOrders();
+    }
+  }, [isAuthenticated, fetchOrders]);
 
   // Inloggen verifiëren
   const handleLogin = async (e: React.FormEvent) => {
@@ -49,43 +79,36 @@ export default function AdminPage() {
 
       if (data.success) {
         setIsAuthenticated(true);
-        fetchOrders();
       } else {
         setLoginError('🔑 Onjuist wachtwoord, probeer opnieuw.');
       }
     } catch (err) {
-      setLoginError('Fout bij inloggen.');
+      setLoginError('Fout bij communicatie met de server.');
     }
   };
 
-  // Bestellingen ophalen
-  const fetchOrders = async () => {
-    setOrdersLoading(true);
-    const { data, error } = await supabase
-      .from('orders')
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Fout bij ophalen bestellingen:', error.message);
-    } else if (data) {
-      setOrders(data);
-    }
-    setOrdersLoading(false);
-  };
-
+  // Product toevoegen
   const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage('');
 
+    const parsedPrice = parseFloat(price);
+    const parsedStock = parseInt(stock, 10);
+
+    if (isNaN(parsedPrice) || isNaN(parsedStock)) {
+      setMessage('⚠️ Voer een geldige prijs en voorraad in.');
+      setLoading(false);
+      return;
+    }
+
     const { error } = await supabase.from('products').insert([
       {
-        title,
-        description,
-        price: parseFloat(price),
-        image_url: imageUrl,
-        stock: parseInt(stock),
+        title: title.trim(),
+        description: description.trim(),
+        price: parsedPrice,
+        image_url: imageUrl.trim(),
+        stock: parsedStock,
       },
     ]);
 
@@ -103,13 +126,13 @@ export default function AdminPage() {
     }
   };
 
-  // 1. Toon inlogscherm als de gebruiker niet is ingelogd
+  // 1. Inlogscherm wanneer niet ingelogd
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4 font-sans">
         <div className="bg-white p-8 rounded-xl border shadow-md max-w-md w-full">
           <div className="text-center mb-6">
-            <span className="text-4xl">🔒</span>
+            <span className="text-4xl" role="img" aria-label="slot">🔒</span>
             <h1 className="text-2xl font-bold text-gray-800 mt-2">Beheerders Login</h1>
             <p className="text-sm text-gray-500">Voer het wachtwoord in om door te gaan</p>
           </div>
@@ -128,6 +151,7 @@ export default function AdminPage() {
               <input
                 type="password"
                 required
+                autoComplete="current-password"
                 value={inputPassword}
                 onChange={(e) => setInputPassword(e.target.value)}
                 placeholder="••••••••"
@@ -153,7 +177,7 @@ export default function AdminPage() {
     );
   }
 
-  // 2. Toon beheerdersdashboard na succesvol inloggen
+  // 2. Beheerdersdashboard
   return (
     <div className="max-w-4xl mx-auto p-8 font-sans">
       <div className="flex justify-between items-center mb-8 border-b pb-4">
@@ -181,7 +205,7 @@ export default function AdminPage() {
         {message && (
           <div
             className={`p-4 mb-6 rounded text-white ${
-              message.includes('✅') ? 'bg-green-600' : 'bg-red-600'
+              message.startsWith('✅') ? 'bg-green-600' : 'bg-red-600'
             }`}
           >
             {message}
@@ -218,6 +242,7 @@ export default function AdminPage() {
               <input
                 type="number"
                 step="0.01"
+                min="0"
                 required
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
@@ -230,6 +255,7 @@ export default function AdminPage() {
               <label className="block text-sm font-semibold mb-1 text-gray-700">Voorraad</label>
               <input
                 type="number"
+                min="0"
                 required
                 value={stock}
                 onChange={(e) => setStock(e.target.value)}
@@ -265,9 +291,10 @@ export default function AdminPage() {
           <h2 className="text-2xl font-bold text-gray-700">Binnengekomen Bestellingen</h2>
           <button
             onClick={fetchOrders}
-            className="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-gray-700 font-medium"
+            disabled={ordersLoading}
+            className="text-sm bg-gray-200 hover:bg-gray-300 px-3 py-1 rounded text-gray-700 font-medium disabled:opacity-50"
           >
-            🔄 Verversen
+            {ordersLoading ? '⏳ Laden...' : '🔄 Verversen'}
           </button>
         </div>
 
@@ -298,19 +325,24 @@ export default function AdminPage() {
                     >
                       {order.status === 'paid' ? '✅ Betaald' : '⏳ In afwachting'}
                     </span>
-                    <p className="text-lg font-bold text-gray-900 mt-2">€{order.total_price.toFixed(2)}</p>
+                    <p className="text-lg font-bold text-gray-900 mt-2">
+                      €{Number(order.total_price || 0).toFixed(2)}
+                    </p>
                   </div>
                 </div>
 
                 <div>
                   <p className="text-xs font-semibold text-gray-500 uppercase mb-1">Gekochte Artikelen:</p>
                   <ul className="text-sm text-gray-700 space-y-1">
-                    {Array.isArray(order.items) &&
-                      order.items.map((item: any, idx: number) => (
-                        <li key={idx}>
-                          • {item.quantity}x {item.title} (€{item.price.toFixed(2)} per stuk)
+                    {Array.isArray(order.items) && order.items.length > 0 ? (
+                      order.items.map((item, idx) => (
+                        <li key={item.id || idx}>
+                          • {item.quantity}x {item.title} (€{Number(item.price || 0).toFixed(2)} per stuk)
                         </li>
-                      ))}
+                      ))
+                    ) : (
+                      <li className="text-gray-400 italic">Geen artikelen aanwezig in deze bestelling</li>
+                    )}
                   </ul>
                 </div>
               </div>
