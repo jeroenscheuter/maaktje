@@ -27,7 +27,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Bestelling niet gevonden' }, { status: 404 });
     }
 
-    if (payment.isPaid() && order.status !== 'paid') {
+    // Aangepast: check op payment.status === 'paid' in plaats van payment.isPaid()
+    if (payment.status === 'paid' && order.status !== 'paid') {
       await supabase
         .from('orders')
         .update({ status: 'paid' })
